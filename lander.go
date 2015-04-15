@@ -10,6 +10,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -18,9 +19,9 @@ type SysInfo struct {
 	CPUUsage     string
 	Hostname     string
 	Uptime       time.Duration
-	Load1        float64
-	Load5        float64
-	Load15       float64
+	Load1        string
+	Load5        string
+	Load15       string
 	Procs        uint64
 	TotalRam     uint64
 	FreeRam      uint64
@@ -30,6 +31,7 @@ type SysInfo struct {
 	FreeSwp      uint64
 	TotalHighRam uint64
 	FreeHighRam  uint64
+	mu           sync.Mutex
 }
 
 var sysInfo SysInfo
@@ -54,10 +56,13 @@ func getSysinfo() {
 	scale := 65536.0
 	unit := uint64(si.Unit) * 1024 * 1024 // MiB
 
+	defer sysInfo.mu.Unlock()
+	sysInfo.mu.Lock()
+
 	sysInfo.Uptime = time.Duration(si.Uptime) * time.Second
-	sysInfo.Load1 = float64(si.Loads[0]) / scale
-	sysInfo.Load5 = float64(si.Loads[1]) / scale
-	sysInfo.Load15 = float64(si.Loads[2]) / scale
+	sysInfo.Load1 = fmt.Sprintf("%2.2f", (float64(si.Loads[0]) / scale))
+	sysInfo.Load5 = fmt.Sprintf("%2.2f", (float64(si.Loads[1]) / scale))
+	sysInfo.Load15 = fmt.Sprintf("%2.2f", (float64(si.Loads[2]) / scale))
 	sysInfo.Procs = uint64(si.Procs)
 	sysInfo.TotalRam = uint64(si.Totalram) / unit
 	sysInfo.FreeRam = uint64(si.Freeram) / unit
