@@ -10,16 +10,64 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
 type SysInfo struct {
-	CPUUsage string
-	Hostname string
+	CPUUsage     string
+	Hostname     string
+	Uptime       time.Duration
+	Load1        float64
+	Load5        float64
+	Load15       float64
+	Procs        uint64
+	TotalRam     uint64
+	FreeRam      uint64
+	SharedRam    uint64
+	BufferRam    uint64
+	TotalSwp     uint64
+	FreeSwp      uint64
+	TotalHighRam uint64
+	FreeHighRam  uint64
 }
 
-// This is horrible and needs a proper implementation
 var sysInfo SysInfo
+
+func getHostname() {
+	hostname, err := os.Hostname()
+	if err != nil {
+		fmt.Println("Error: ", err)
+		return
+	}
+	sysInfo.Hostname = hostname
+}
+
+func getSysinfo() {
+	si := &syscall.Sysinfo_t{}
+
+	err := syscall.Sysinfo(si)
+	if err != nil {
+		fmt.Println("Error: ", err)
+	}
+
+	scale := 65536.0
+	unit := uint64(si.Unit) * 1024 * 1024 // MiB
+
+	sysInfo.Uptime = time.Duration(si.Uptime) * time.Second
+	sysInfo.Load1 = float64(si.Loads[0]) / scale
+	sysInfo.Load5 = float64(si.Loads[1]) / scale
+	sysInfo.Load15 = float64(si.Loads[2]) / scale
+	sysInfo.Procs = uint64(si.Procs)
+	sysInfo.TotalRam = uint64(si.Totalram) / unit
+	sysInfo.FreeRam = uint64(si.Freeram) / unit
+	sysInfo.BufferRam = uint64(si.Bufferram) / unit
+	sysInfo.TotalSwp = uint64(si.Totalswap) / unit
+	sysInfo.FreeSwp = uint64(si.Freeswap) / unit
+	sysInfo.TotalHighRam = uint64(si.Totalhigh) / unit
+	sysInfo.FreeHighRam = uint64(si.Freehigh) / unit
+
+}
 
 func getCPUTime() (total, idle uint64) {
 	proc_stat, err := ioutil.ReadFile("/proc/stat")
@@ -64,20 +112,23 @@ func worker() {
 
 func httpHandler(w http.ResponseWriter, r *http.Request) {
 	fp := path.Join("templates", "index.html")
+
 	tmpl, err := template.ParseFiles(fp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if err := tmpl.Execute(w, sysInfo); err != nil {
+	err = tmpl.Execute(w, sysInfo)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
 func main() {
 	go worker()
-	sysInfo.Hostname, _ = os.Hostname()
+	getHostname()
+	getSysinfo()
 	http.HandleFunc("/", httpHandler)
 	http.ListenAndServe(":5000", nil)
 }
