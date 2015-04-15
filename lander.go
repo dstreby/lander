@@ -106,6 +106,7 @@ func getCPUUsage(delay int) (cpuPercent float64) {
 
 func worker() {
 	for {
+		getSysinfo()
 		sysInfo.CPUUsage = fmt.Sprintf("%.2f", getCPUUsage(3000))
 	}
 }
@@ -126,9 +127,10 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	go worker()
+	for w := 1; w <= 4; w++ {
+		go worker()
+	}
 	getHostname()
-	getSysinfo()
 	http.HandleFunc("/", httpHandler)
 	http.ListenAndServe(":5000", nil)
 }
