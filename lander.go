@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"math"
 	"net/http"
-	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -16,8 +15,13 @@ import (
 )
 
 type SysInfo struct {
-	CPUUsage     string
 	Hostname     string
+	Sysname      string
+	Release      string
+	Version      string
+	Machine      string
+	Domainname   string
+	CPUUsage     string
 	Uptime       time.Duration
 	Load1        string
 	Load5        string
@@ -34,15 +38,30 @@ type SysInfo struct {
 	mu           sync.Mutex
 }
 
-var sysInfo SysInfo
+var SI SysInfo
 
-func getHostname() {
-	hostname, err := os.Hostname()
-	if err != nil {
-		fmt.Println("Error: ", err)
-		return
+func utsToStr(intarr *[65]int8) string {
+	var str string
+	for _, val := range *intarr {
+		str += string(int(val))
 	}
-	sysInfo.Hostname = hostname
+
+	return strings.Trim(str, "\000")
+}
+
+func getUname() {
+	uts := &syscall.Utsname{}
+
+	if err := syscall.Uname(uts); err != nil {
+		fmt.Println("Error: ", err)
+	}
+
+	SI.Sysname = utsToStr(&uts.Sysname)
+	SI.Hostname = utsToStr(&uts.Nodename)
+	SI.Release = utsToStr(&uts.Release)
+	SI.Version = utsToStr(&uts.Version)
+	SI.Machine = utsToStr(&uts.Machine)
+	SI.Domainname = utsToStr(&uts.Domainname)
 }
 
 func getSysinfo() {
@@ -56,21 +75,21 @@ func getSysinfo() {
 	scale := 65536.0
 	unit := uint64(si.Unit) * 1024 * 1024 // MiB
 
-	defer sysInfo.mu.Unlock()
-	sysInfo.mu.Lock()
+	defer SI.mu.Unlock()
+	SI.mu.Lock()
 
-	sysInfo.Uptime = time.Duration(si.Uptime) * time.Second
-	sysInfo.Load1 = fmt.Sprintf("%2.2f", (float64(si.Loads[0]) / scale))
-	sysInfo.Load5 = fmt.Sprintf("%2.2f", (float64(si.Loads[1]) / scale))
-	sysInfo.Load15 = fmt.Sprintf("%2.2f", (float64(si.Loads[2]) / scale))
-	sysInfo.Procs = uint64(si.Procs)
-	sysInfo.TotalRam = uint64(si.Totalram) / unit
-	sysInfo.FreeRam = uint64(si.Freeram) / unit
-	sysInfo.BufferRam = uint64(si.Bufferram) / unit
-	sysInfo.TotalSwp = uint64(si.Totalswap) / unit
-	sysInfo.FreeSwp = uint64(si.Freeswap) / unit
-	sysInfo.TotalHighRam = uint64(si.Totalhigh) / unit
-	sysInfo.FreeHighRam = uint64(si.Freehigh) / unit
+	SI.Uptime = time.Duration(si.Uptime) * time.Second
+	SI.Load1 = fmt.Sprintf("%2.2f", (float64(si.Loads[0]) / scale))
+	SI.Load5 = fmt.Sprintf("%2.2f", (float64(si.Loads[1]) / scale))
+	SI.Load15 = fmt.Sprintf("%2.2f", (float64(si.Loads[2]) / scale))
+	SI.Procs = uint64(si.Procs)
+	SI.TotalRam = uint64(si.Totalram) / unit
+	SI.FreeRam = uint64(si.Freeram) / unit
+	SI.BufferRam = uint64(si.Bufferram) / unit
+	SI.TotalSwp = uint64(si.Totalswap) / unit
+	SI.FreeSwp = uint64(si.Freeswap) / unit
+	SI.TotalHighRam = uint64(si.Totalhigh) / unit
+	SI.FreeHighRam = uint64(si.Freehigh) / unit
 
 }
 
@@ -113,9 +132,9 @@ func worker() {
 	for {
 		getSysinfo()
 		usage := getCPUUsage(3000)
-		sysInfo.mu.Lock()
-		sysInfo.CPUUsage = fmt.Sprintf("%.2f", usage)
-		sysInfo.mu.Unlock()
+		SI.mu.Lock()
+		SI.CPUUsage = fmt.Sprintf("%.2f", usage)
+		SI.mu.Unlock()
 	}
 }
 
@@ -128,14 +147,14 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = tmpl.Execute(w, sysInfo)
+	err = tmpl.Execute(w, SI)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
 func main() {
-	getHostname()
+	getUname()
 
 	for w := 1; w <= 4; w++ {
 		go worker()
