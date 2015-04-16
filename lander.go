@@ -136,9 +136,13 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	getHostname()
+
 	for w := 1; w <= 4; w++ {
 		go worker()
 	}
+
+	fs := http.FileServer(http.Dir("assets"))
+	http.Handle("/assets/", http.StripPrefix("/assets/", fs))
 	http.HandleFunc("/", httpHandler)
 	http.ListenAndServe(":5000", nil)
 }
